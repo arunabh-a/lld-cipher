@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LLD Practice Platform
 
-## Getting Started
+A full-stack web app for practicing Low-Level Design problems with rubric-based feedback. Write a structured design submission and get evaluated by both a deterministic completeness checker and an OpenAI-powered design critique.
 
-First, run the development server:
+## Quick Start
 
 ```bash
+# 1. Install dependencies
+npm install
+
+# 2. Set up your OpenAI API key
+cp .env.example .env.local
+# Edit .env.local and add your OpenAI API key
+
+# 3. Run the dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# 4. Open http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Tech Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Next.js 16** (App Router, TypeScript)
+- **SQLite** via `better-sqlite3` — plain SQL, no ORM
+- **OpenAI API** (`gpt-4o-mini`) for design critique
+- **Tailwind CSS** for styling
+- **Vitest** for testing
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Project Structure
 
-## Learn More
+```
+src/
+├── app/                          # Next.js App Router pages & API routes
+│   ├── page.tsx                  # Home — problem list
+│   ├── problems/[id]/
+│   │   ├── page.tsx              # Problem detail
+│   │   └── history/page.tsx      # Attempt history
+│   ├── attempts/[id]/
+│   │   ├── page.tsx              # Attempt workspace
+│   │   └── AttemptWorkspace.tsx  # Client component (form/poll/feedback)
+│   └── api/
+│       ├── problems/             # GET list, GET by ID
+│       └── attempts/             # GET, PATCH, POST submit, POST retry
+├── lib/
+│   ├── db.ts                     # SQLite schema, seed data, query helpers
+│   └── domain/
+│       ├── types.ts              # All domain types
+│       ├── rubric.ts             # 6 rubric criteria
+│       ├── evaluator.ts          # Evaluator interface + implementations
+│       ├── orchestrator.ts       # Evaluation orchestrator
+│       └── __tests__/
+│           └── evaluator.test.ts # 6 tests
+```
 
-To learn more about Next.js, take a look at the following resources:
+## How It Works
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. **Pick a problem** from the home page (4 seeded problems)
+2. **Write your design** in a structured form (assumptions, classes, relationships, extensibility)
+3. **Submit** — the server runs evaluation in the background:
+   - **Deterministic check** first: are all sections filled? At least 2 classes with responsibilities?
+   - If that passes, **LLM evaluator** scores against 6 rubric criteria
+4. **View feedback** with per-criterion scores (0-5), evidence, concerns, and suggestions
+5. **Retry** if the LLM call failed (without re-typing your submission)
+6. **Track progress** across attempts in the history view
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Running Tests
 
-## Deploy on Vercel
+```bash
+npm test
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Tests cover:
+1. DeterministicEvaluator passes on well-formed submissions
+2. DeterministicEvaluator fails on empty sections
+3. DeterministicEvaluator fails on missing class responsibilities
+4. Orchestrator skips LLM when deterministic fails
+5. Orchestrator preserves deterministic results on LLM failure
+6. Attempt status machine (`canSubmit` helper)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Key Design Decisions
+
+- **Deterministic evaluator runs first** to save API costs and give instant structural feedback
+- **Deterministic failure is "Completed" not "Failed"** — it's valid, useful feedback
+- **LLM failure preserves deterministic results** — don't throw away useful data
+- **Fire-and-forget background evaluation** — simple `void` call, frontend polls every 2s
+- **No ORM** — plain SQL in one file for maximum readability
+- **One file per concept** — types, evaluator, orchestrator, rubric each in their own file
